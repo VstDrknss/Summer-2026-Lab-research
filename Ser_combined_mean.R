@@ -194,5 +194,3 @@ write_csv(
   na = ""
 )
 
-
-print("Finished merging!")
