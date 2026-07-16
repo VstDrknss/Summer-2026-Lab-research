@@ -1,16 +1,15 @@
 library(readr)
 
-experiment_date <- readline(
-  prompt = "Enter experiment date (YYYY-MM-DD): "
-)
-
-
 input_file <- "~/Downloads/SER2_cleaned.csv"
 
-combined_file <- "~/Downloads/ser_combined_means.csv"
+combined_file <- "~/Downloads/Data 1.csv"
 
 output_file <- "~/Downloads/ser_combined_updated.csv"
 
+
+experiment_date <- readline(
+  prompt = "Enter experiment date (YYYY-MM-DD): "
+)
 
 
 data <- read_csv(
@@ -29,132 +28,169 @@ combined <- read_csv(
 )
 
 
+colnames(data) <- trimws(colnames(data))
+colnames(combined) <- trimws(colnames(combined))
+colnames(combined) <- make.unique(colnames(combined))
 
-data$Concentration <- as.character(
-  data$Concentration
+
+data$Concentration <- as.numeric(
+  trimws(data$Concentration)
 )
 
-combined$Concentration <- as.character(
-  combined$Concentration
+
+combined$Concentration <- as.numeric(
+  trimws(combined$Concentration)
+)
+#
+date_row <- which(is.na(combined$Concentration))[1]
+
+timepoints <- colnames(data)[2:ncol(data)]
+
+
+check_rows <- which(
+  !is.na(combined$Concentration)
 )
 
 
-
-if(nrow(combined) < 2){
+for(timepoint in timepoints){
   
-  date_row <- as.data.frame(
-    matrix(
-      NA,
-      nrow = 1,
-      ncol = ncol(combined)
-    )
+  print(
+    paste("Checking:", timepoint)
   )
   
-  colnames(date_row) <- colnames(combined)
-  
-  combined <- rbind(
-    combined[1,],
-    date_row,
-    combined[-1,]
+  time_cols <- grep(
+    paste0("^", timepoint),
+    colnames(combined)
   )
   
-}
-
-
-
-for(col in 2:ncol(data)){
+  all_full <- TRUE
   
-
-  # Get timepoint and values
-  
-  timepoint <- colnames(data)[col]
-  
-  values <- data[[col]]
-  
-  
-  # Find existing columns for this timepoint
-
-  
-  time_cols <- which(
-    colnames(combined) == timepoint
-  )
-  
-
-  # If timepoint does not exist, create it
-
-  if(length(time_cols) == 0){
+  for(c in time_cols){
     
-    
-    combined[[ncol(combined)+1]] <- NA
-    
-    target_col <- ncol(combined)
-    
-    colnames(combined)[target_col] <- timepoint
-    
-    
-  } else {
-    
-    
-    
-    dates <- combined[2,time_cols]
-    
-    
-    filled_dates <- which(
-      !is.na(dates) &
-        dates != ""
+    empty <- any(
+      is.na(combined[[c]][check_rows]) |
+        combined[[c]][check_rows] == ""
     )
     
-    
-    
-    if(length(filled_dates) > 0){
+    if(empty){
       
-      
-      # last used replicate
-      last_used <- max(filled_dates)
-      
-      
-      # next replicate
-      target_col <- time_cols[last_used] + 1
-      
-      
-      #creating new column if none empty
-      
-      if(
-        target_col > ncol(combined) ||
-        colnames(combined)[target_col] != timepoint
-      ){
-        
-        
-        combined[[ncol(combined)+1]] <- NA
-        
-        target_col <- ncol(combined)
-        
-        colnames(combined)[target_col] <- timepoint
-        
-      }
-      
-      
-    } else {
-      
-      
-      # No previous dates, use first replicate
-      target_col <- time_cols[1]
+      all_full <- FALSE
       
     }
     
   }
   
   
+  if(all_full){
+    
+    insert_position <- max(time_cols)
+    
+    ##
+    new_column <- data.frame(
+      empty = rep(
+        NA,
+        nrow(combined)
+      ),
+      stringsAsFactors = FALSE
+    )
+    
+    colnames(new_column) <- paste0(
+      timepoint,
+      ".new"
+    )
+    
+    # Put the experiment date in the header row
+    new_column[date_row, 1] <- experiment_date
+    #####
+    
+    if(insert_position == ncol(combined)){
+      
+      combined <- cbind(
+        combined,
+        new_column
+      )
+      
+    } else {
+      
+      combined <- cbind(
+        combined[,1:insert_position, drop = FALSE],
+        new_column,
+        combined[,(insert_position+1):ncol(combined), drop = FALSE]
+      )
+      
+    }
+    
+    print(
+      paste(
+        "Added empty column:",
+        paste0(timepoint, ".new")
+      )
+    )
+    
+  }
   
-  combined[2,target_col] <- experiment_date
   
-  #inserting selon conc
+}
+
+
+for(col in 2:ncol(data)){
+  
+  timepoint <- colnames(data)[col]
+  
+  values <- data[[col]]
+  
+  print(
+    paste(
+      "Adding values for:",
+      timepoint
+    )
+  )
+  
+  
+  time_cols <- grep(
+    paste0("^", timepoint),
+    colnames(combined)
+  )
+  
+  
+  target_col <- NA
+  
+  
+  for(c in time_cols){
+    
+    empty <- any(
+      is.na(combined[[c]][check_rows]) |
+        combined[[c]][check_rows] == ""
+    )
+    
+    if(empty){
+      
+      target_col <- c
+      
+      break
+      
+    }
+    
+  }
+  
+  
+  if(is.na(target_col)){
+    
+    print(
+      paste(
+        "No empty column found for",
+        timepoint
+      )
+    )
+    
+    next
+    
+  }
+  
   
   for(i in seq_along(values)){
     
-    
     conc <- data$Concentration[i]
-    
     
     row_match <- which(
       combined$Concentration == conc
@@ -163,29 +199,30 @@ for(col in 2:ncol(data)){
     
     if(length(row_match) == 1){
       
+      combined[row_match, target_col] <- values[i]
       
-      combined[row_match,target_col] <- values[i]
+    } else {
       
+      print(
+        paste(
+          "No concentration match:",
+          conc
+        )
+      )
       
     }
     
   }
   
   
-  
   print(
     paste(
-      "Added",
-      timepoint,
-      "date:",
-      experiment_date,
-      "column:",
-      target_col
+      "Filled:",
+      colnames(combined)[target_col]
     )
   )
   
 }
-
 
 
 write_csv(
@@ -194,3 +231,5 @@ write_csv(
   na = ""
 )
 
+
+print("Finished merging!")
