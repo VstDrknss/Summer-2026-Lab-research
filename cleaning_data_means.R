@@ -10,9 +10,16 @@ experiment_date <- sub(
   filename
 )
 
+sensor <- sub(
+  ".*\\d{4}-\\d{2}-\\d{2}\\s+([^ ]+).*",
+  "\\1",
+  filename
+)
 
 output_file <- paste0(
   "~/Downloads/SER2_cleaned_",
+  sensor,
+  "_",
   experiment_date,
   ".csv"
 )
