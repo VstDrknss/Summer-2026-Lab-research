@@ -1,16 +1,12 @@
 library(readr)
 
-input_file <- "~/Downloads/SER2_cleaned.csv"
-
-combined_file <- "~/Downloads/Data 1.csv"
-
+input_file <- "~/Downloads/SER1_cleaned.csv"
+combined_file <- file.choose()
 output_file <- "~/Downloads/ser_combined_updated.csv"
-
 
 experiment_date <- readline(
   prompt = "Enter experiment date (YYYY-MM-DD): "
 )
-
 
 data <- read_csv(
   input_file,
@@ -19,7 +15,6 @@ data <- read_csv(
   col_types = cols(.default = col_character())
 )
 
-
 combined <- read_csv(
   combined_file,
   name_repair = "minimal",
@@ -27,209 +22,127 @@ combined <- read_csv(
   col_types = cols(.default = col_character())
 )
 
+# Clean data
 
 colnames(data) <- trimws(colnames(data))
-colnames(combined) <- trimws(colnames(combined))
-colnames(combined) <- make.unique(colnames(combined))
+colnames(combined) <- make.unique(trimws(colnames(combined)))
 
+#converting str to numerical
+data$Concentration <- as.numeric(trimws(data$Concentration))
+combined$Concentration <- as.numeric(trimws(combined$Concentration))
 
-data$Concentration <- as.numeric(
-  trimws(data$Concentration)
-)
-
-
-combined$Concentration <- as.numeric(
-  trimws(combined$Concentration)
-)
-#
+#finding date row
 date_row <- which(is.na(combined$Concentration))[1]
-
-timepoints <- colnames(data)[2:ncol(data)]
-
-
-check_rows <- which(
-  !is.na(combined$Concentration)
-)
+check_rows <- which(!is.na(combined$Concentration))
 
 
-for(timepoint in timepoints){
-  
-  print(
-    paste("Checking:", timepoint)
-  )
-  
-  time_cols <- grep(
-    paste0("^", timepoint),
-    colnames(combined)
-  )
-  
-  all_full <- TRUE
-  
-  for(c in time_cols){
-    
-    empty <- any(
-      is.na(combined[[c]][check_rows]) |
-        combined[[c]][check_rows] == ""
-    )
-    
-    if(empty){
-      
-      all_full <- FALSE
-      
-    }
-    
-  }
-  
-  
-  if(all_full){
-    
-    insert_position <- max(time_cols)
-    
-    ##
-    new_column <- data.frame(
-      empty = rep(
-        NA,
-        nrow(combined)
-      ),
-      stringsAsFactors = FALSE
-    )
-    
-    colnames(new_column) <- paste0(
-      timepoint,
-      ".new"
-    )
-    
-    # Put the experiment date in the header row
-    new_column[date_row, 1] <- experiment_date
-    #####
-    
-    if(insert_position == ncol(combined)){
-      
-      combined <- cbind(
-        combined,
-        new_column
-      )
-      
-    } else {
-      
-      combined <- cbind(
-        combined[,1:insert_position, drop = FALSE],
-        new_column,
-        combined[,(insert_position+1):ncol(combined), drop = FALSE]
-      )
-      
-    }
-    
-    print(
-      paste(
-        "Added empty column:",
-        paste0(timepoint, ".new")
-      )
-    )
-    
-  }
-  
-  
-}
-
-
+#find rows with conc
 for(col in 2:ncol(data)){
   
   timepoint <- colnames(data)[col]
-  
   values <- data[[col]]
   
-  print(
-    paste(
-      "Adding values for:",
-      timepoint
-    )
-  )
+  #####cat("Processing", timepoint, "\n")
   
-  
+  # Find all columns for this timepoint
   time_cols <- grep(
-    paste0("^", timepoint),
+    paste0("^", gsub("([.|()\\^{}+$*?]|\\[|\\])", "\\\\\\1", timepoint)),
     colnames(combined)
   )
   
-  
   target_col <- NA
   
-  
+  # Look for an empty replicate
   for(c in time_cols){
     
-    empty <- any(
-      is.na(combined[[c]][check_rows]) |
-        combined[[c]][check_rows] == ""
-    )
-    
-    if(empty){
+    if(all(is.na(combined[check_rows, c]) |
+           combined[check_rows, c] == "")){
       
       target_col <- c
-      
       break
       
     }
     
   }
   
-  
+  # if none are empty, create a new column
   if(is.na(target_col)){
     
-    print(
-      paste(
-        "No empty column found for",
-        timepoint
-      )
-    )
+    insert_position <- max(time_cols)
     
-    next
+    new_column <- rep(NA_character_, nrow(combined))
+    new_column[date_row] <- experiment_date
     
-  }
-  
-  
-  for(i in seq_along(values)){
-    
-    conc <- data$Concentration[i]
-    
-    row_match <- which(
-      combined$Concentration == conc
-    )
-    
-    
-    if(length(row_match) == 1){
+    if(insert_position == ncol(combined)){
       
-      combined[row_match, target_col] <- values[i]
+      combined[[paste0(timepoint, ".new")]] <- new_column
+      target_col <- ncol(combined)
       
     } else {
       
-      print(
-        paste(
-          "No concentration match:",
-          conc
-        )
+      left <- combined[, 1:insert_position, drop = FALSE]
+      right <- combined[, (insert_position + 1):ncol(combined), drop = FALSE]
+      
+      combined <- cbind(
+        left,
+        setNames(data.frame(new_column), paste0(timepoint, ".new")),
+        right
       )
       
+      target_col <- insert_position + 1
     }
+    
+    #####cat("Created new column:", colnames(combined)[target_col], "\n")
     
   }
   
+  # Fill values by concentration
+  for(i in seq_len(nrow(data))){
+    
+    row_match <- match(data$Concentration[i], combined$Concentration)
+    
+    if(!is.na(row_match))
+      combined[row_match, target_col] <- values[i]
+    
+  }
   
-  print(
-    paste(
-      "Filled:",
-      colnames(combined)[target_col]
-    )
-  )
+  #####cat("Filled", colnames(combined)[target_col], "\n\n")
   
 }
 
 
-write_csv(
-  combined,
-  output_file,
-  na = ""
+timepoints <- c(
+  "basal",
+  "2.5 min",
+  "5 min",
+  "7.5 min",
+  "10 min",
+  "12.5 min",
+  "15 min",
+  "17.5 min",
+  "20 min",
+  "22.5 min",
+  "25 min"
 )
 
 
-print("Finished merging!")
+for(timepoint in timepoints){
+  
+  
+  cols <- grep(
+    paste0("^", timepoint),
+    colnames(combined)
+  )
+  
+  
+  if(length(cols) > 0){
+    
+    colnames(combined)[cols] <- timepoint
+    
+  }
+  
+}
+
+write_csv(combined, output_file, na = "")
+
+cat("Finished merging!\n")
