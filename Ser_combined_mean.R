@@ -2,7 +2,7 @@ library(readr)
 
 
 # File paths
-input_file <- "~/Downloads/SER1_cleaned.csv"
+input_file <- file.choose()
 combined_file <- "~/Downloads/ser_combined_updated.csv"
 output_file <- "~/Downloads/ser_combined_updated.csv"
 
