@@ -2,14 +2,26 @@ library(readr)
 
 input_file <- file.choose()
 
-output_file <- "~/Downloads/SER1_cleaned.csv"
+filename <- basename(input_file)
+
+experiment_date <- sub(
+  ".*(\\d{4}-\\d{2}-\\d{2}).*",
+  "\\1",
+  filename
+)
+
+
+output_file <- paste0(
+  "~/Downloads/SER2_cleaned_",
+  experiment_date,
+  ".csv"
+)
 
 
 data <- read_csv(
   input_file
 )
 
-# select columns
 
 keep_columns <- c(
   1,
@@ -22,6 +34,7 @@ keep_columns <- c(
 
 
 cleaned_data <- data[, keep_columns]
+
 
 colnames(cleaned_data) <- c(
   "Concentration",
@@ -38,10 +51,8 @@ colnames(cleaned_data) <- c(
   "25 min"
 )
 
+
 write_csv(
   cleaned_data,
   output_file
 )
-
-
-print("CSV cleaned successfully")
