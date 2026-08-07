@@ -347,10 +347,21 @@ for(input_file in input_files){
   
 }
 
-timepoints <- unique(
-  sub("\\..*", "", colnames(combined))
-)
+# ORDER COLUMNS BY TIMEPOINT THEN DATE
 
+timepoints <- c(
+  "basal",
+  "2.5 min",
+  "5 min",
+  "7.5 min",
+  "10 min",
+  "12.5 min",
+  "15 min",
+  "17.5 min",
+  "20 min",
+  "22.5 min",
+  "25 min"
+)
 
 ordered_columns <- c()
 
@@ -375,7 +386,7 @@ for(tp in timepoints){
       format = "%Y-%m-%d"
     )
     
-    # sort columns by date
+    # sort by date
     cols <- cols[
       order(dates, na.last = TRUE)
     ]
@@ -387,7 +398,9 @@ for(tp in timepoints){
   }
 }
 
+
 # keep Concentration first
+
 combined <- combined[
   ,
   c("Concentration", ordered_columns),
