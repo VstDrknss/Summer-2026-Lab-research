@@ -1,5 +1,3 @@
-
-
 ##testing for claening files form a folder
 library(readr)
 library(rstudioapi)
@@ -19,6 +17,11 @@ files <- list.files(
   full.names = TRUE,
   recursive = TRUE
 )
+
+# Exclude files that are already cleaned
+files <- files[
+  !grepl("_cleaned\\.csv$|combined_means", basename(files), ignore.case = TRUE)
+]
 
 
 print(paste(length(files), "CSV files found"))
@@ -91,16 +94,16 @@ for (input_file in files) {
   )
   
   
+  output_filename <- sub(
+    "\\.csv$",
+    "_cleaned.csv",
+    filename,
+    ignore.case = TRUE
+  )
+  
   output_file <- file.path(
     output_folder,
-    paste0(
-      drug_name,
-      "_cleaned_",
-      sensor,
-      "_",
-      experiment_date,
-      ".csv"
-    )
+    output_filename
   )
   
   write_csv(
@@ -119,3 +122,4 @@ for (input_file in files) {
 
 
 print("All CSV files cleaned successfully!")
+
