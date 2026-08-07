@@ -20,9 +20,14 @@ cat(
 )
 
 
-combined_file <- "~/Downloads/pkc/SER_pkc_means.csv"
+combined_file <- file.choose()
 
-output_file <- "~/Downloads/pkc/SER_pkc_means.csv"
+drug_name <- basename(dirname(combined_file))
+
+output_file <- file.path(
+  dirname(combined_file),
+  paste0("Combined_means_of_", drug_name, ".csv")
+)
 
 
 combined <- read_csv(
@@ -99,7 +104,7 @@ for(input_file in input_files){
   )
   
   experiment_date <- sub(
-    ".*_(\\d{4}-\\d{2}-\\d{2})\\.csv$",
+    ".*(\\d{4}-\\d{2}-\\d{2}).*",
     "\\1",
     basename(input_file)
   )
@@ -144,6 +149,82 @@ for(input_file in input_files){
       colnames(data)[colnames(data) %in% names(timepoint_map)]
     ]
   
+  # CHECK IF EXPERIMENT ALREADY EXISTS (SAME DATE + SAME DATA)
+  
+  duplicate_found <- FALSE
+  
+  # Find columns with the same experiment date
+  same_date_cols <- which(
+    unlist(combined[date_row, ]) == experiment_date
+  )
+  
+  # Only check duplicates if the date already exists
+  if(length(same_date_cols) > 0){
+    
+    all_timepoints_match <- c()
+    
+    for(col in 2:ncol(data)){
+      
+      timepoint <- colnames(data)[col]
+      
+      new_values <- as.character(
+        data[[col]]
+      )
+      
+      existing_cols <- intersect(
+        grep(
+          paste0("^", timepoint),
+          colnames(combined)
+        ),
+        same_date_cols
+      )
+      
+      timepoint_match <- FALSE
+      
+      for(c in existing_cols){
+        
+        existing_values <- as.character(
+          combined[check_rows, c]
+        )
+        
+        if(identical(
+          existing_values,
+          new_values
+        )){
+          
+          timepoint_match <- TRUE
+          break
+          
+        }
+      }
+      
+      all_timepoints_match <- c(
+        all_timepoints_match,
+        timepoint_match
+      )
+      
+    }
+    
+    
+    if(all(all_timepoints_match)){
+      
+      duplicate_found <- TRUE
+      
+    }
+  }
+  
+  
+  if(duplicate_found){
+    
+    cat(
+      "Skipping duplicate file:",
+      basename(input_file),
+      "\n"
+    )
+    
+    next
+    
+  }
   
   for(col in 2:ncol(data)){
     
@@ -239,11 +320,8 @@ for(input_file in input_files){
       
     }
     
-    
-    ############################
+
     # ADD DATE UNDER TIMEPOINT
-    ############################
-    
     combined[date_row, target_col] <- experiment_date
     
     
@@ -269,12 +347,57 @@ for(input_file in input_files){
   
 }
 
+timepoints <- unique(
+  sub("\\..*", "", colnames(combined))
+)
+
+
+ordered_columns <- c()
+
+for(tp in timepoints){
+  
+  # find columns belonging to this timepoint
+  cols <- grep(
+    paste0("^", tp),
+    colnames(combined)
+  )
+  
+  # remove Concentration if matched
+  cols <- cols[
+    colnames(combined)[cols] != "Concentration"
+  ]
+  
+  if(length(cols) > 0){
+    
+    # extract dates
+    dates <- as.Date(
+      unlist(combined[1, cols]),
+      format = "%Y-%m-%d"
+    )
+    
+    # sort columns by date
+    cols <- cols[
+      order(dates, na.last = TRUE)
+    ]
+    
+    ordered_columns <- c(
+      ordered_columns,
+      colnames(combined)[cols]
+    )
+  }
+}
+
+# keep Concentration first
+combined <- combined[
+  ,
+  c("Concentration", ordered_columns),
+  drop = FALSE
+]
 
 write_csv(
   combined,
   output_file,
   na=""
 )
-
 
 cat("Finished merging all files!")
