@@ -2,16 +2,13 @@ library(readr)
 library(rstudioapi)
 
 input_folder <- selectDirectory(
-  caption = "Select folder containing cleaned CSV files"
-)
-
+  caption = "Select folder containing cleaned CSV files")
 
 input_files <- list.files(
   input_folder,
   pattern = "\\.csv$",
   full.names = TRUE
 )
-
 
 cat(
   "Found",
@@ -22,11 +19,17 @@ cat(
 
 combined_file <- file.choose()
 
-drug_name <- basename(dirname(combined_file))
+drug_name <- basename(
+  dirname(combined_file)
+)
 
 output_file <- file.path(
   dirname(combined_file),
-  paste0("Combined_means_of_", drug_name, ".csv")
+  paste0(
+    "Combined_means_of_",
+    drug_name,
+    ".csv"
+  )
 )
 
 
@@ -37,9 +40,11 @@ combined <- read_csv(
   col_types = cols(.default = col_character())
 )
 
+colnames(combined) <- trimws(
+  colnames(combined)
+)
 
-colnames(combined) <- trimws(colnames(combined))
-
+# Make duplicate column names unique
 colnames(combined) <- make.unique(
   colnames(combined)
 )
@@ -51,9 +56,7 @@ combined_conc <- grep(
   ignore.case = TRUE
 )
 
-
 colnames(combined)[combined_conc] <- "Concentration"
-
 
 combined$Concentration <- as.numeric(
   combined$Concentration
@@ -62,22 +65,18 @@ combined$Concentration <- as.numeric(
 
 date_row <- 1
 
-
 combined <- rbind(
-  combined[1,],
+  combined[1, ],
   combined
 )
 
-
-combined[1,] <- NA
+combined[1, ] <- NA
 
 combined$Concentration[1] <- NA
-
 
 check_rows <- which(
   !is.na(combined$Concentration)
 )
-
 
 timepoint_map <- c(
   "Basal" = "basal",
@@ -94,15 +93,70 @@ timepoint_map <- c(
 )
 
 
-# looping through all csv files
+timepoints <- c(
+  "basal",
+  "2.5 min",
+  "5 min",
+  "7.5 min",
+  "10 min",
+  "12.5 min",
+  "15 min",
+  "17.5 min",
+  "20 min",
+  "22.5 min",
+  "25 min"
+)
+
+
+find_timepoint_columns <- function(
+    column_names,
+    timepoint
+){
+  
+  escaped <- gsub(
+    "([.|()\\^$*+?{}\\[\\]\\\\])",
+    "\\\\\\1",
+    timepoint
+  )
+  
+  which(
+    grepl(
+      paste0(
+        "^",
+        escaped,
+        "(\\.\\d+)?$"
+      ),
+      column_names
+    )
+  )
+  
+}
+
+
+is_completely_empty <- function(
+    x,
+    rows
+){
+  
+  values <- as.character(
+    x[rows]
+  )
+  
+  all(
+    is.na(values) |
+      trimws(values) == ""
+  )
+  
+}
+
 for(input_file in input_files){
   
   cat(
-    "\nProcessing:",
+    "Processing:",
     basename(input_file),
     "\n"
   )
-  
+
   experiment_date <- sub(
     ".*(\\d{4}-\\d{2}-\\d{2}).*",
     "\\1",
@@ -115,6 +169,7 @@ for(input_file in input_files){
     "\n"
   )
   
+
   data <- read_csv(
     input_file,
     name_repair = "minimal",
@@ -122,12 +177,11 @@ for(input_file in input_files){
     col_types = cols(.default = col_character())
   )
   
-  
   colnames(data) <- trimws(
     colnames(data)
   )
-  
-  
+
+  #concentration
   data_conc <- grep(
     "concentration",
     colnames(data),
@@ -136,32 +190,50 @@ for(input_file in input_files){
   
   colnames(data)[data_conc] <- "Concentration"
   
-  
   data$Concentration <- as.numeric(
     data$Concentration
   )
   
+
+  #renamign inputs
+  for(i in seq_along(colnames(data))){
+    
+    current_name <- colnames(data)[i]
+    
+    if(current_name %in% names(timepoint_map)){
+      
+      colnames(data)[i] <-
+        timepoint_map[current_name]
+      
+    }
+    
+  }
   
-  colnames(data)[
-    colnames(data) %in% names(timepoint_map)
-  ] <-
-    timepoint_map[
-      colnames(data)[colnames(data) %in% names(timepoint_map)]
-    ]
   
-  # CHECK IF EXPERIMENT ALREADY EXISTS (SAME DATE + SAME DATA)
+  for(i in seq_along(colnames(data))){
+    
+    cat(
+      i,
+      ":",
+      colnames(data)[i],
+      "\n"
+    )
+    
+  }
+  
+
   
   duplicate_found <- FALSE
   
-  # Find columns with the same experiment date
   same_date_cols <- which(
-    unlist(combined[date_row, ]) == experiment_date
+    as.character(
+      combined[date_row, ]
+    ) == experiment_date
   )
   
-  # Only check duplicates if the date already exists
   if(length(same_date_cols) > 0){
     
-    all_timepoints_match <- c()
+    all_timepoints_match <- TRUE
     
     for(col in 2:ncol(data)){
       
@@ -171,49 +243,68 @@ for(input_file in input_files){
         data[[col]]
       )
       
+      # Find exact timepoint columns
+      time_cols <- find_timepoint_columns(
+        colnames(combined),
+        timepoint
+      )
+      
+      # Keep only columns with this date
       existing_cols <- intersect(
-        grep(
-          paste0("^", timepoint),
-          colnames(combined)
-        ),
+        time_cols,
         same_date_cols
       )
       
       timepoint_match <- FALSE
       
-      for(c in existing_cols){
+      for(existing_col in existing_cols){
         
         existing_values <- as.character(
-          combined[check_rows, c]
+          combined[
+            check_rows,
+            existing_col
+          ]
         )
         
-        if(identical(
-          existing_values,
-          new_values
-        )){
+        if(
+          length(existing_values) ==
+          length(new_values) &&
+          isTRUE(
+            all.equal(
+              existing_values,
+              new_values,
+              check.attributes = FALSE
+            )
+          )
+        ){
           
           timepoint_match <- TRUE
+          
           break
           
         }
+        
       }
       
-      all_timepoints_match <- c(
-        all_timepoints_match,
-        timepoint_match
-      )
+      if(!timepoint_match){
+        
+        all_timepoints_match <- FALSE
+        
+        break
+        
+      }
       
     }
     
-    
-    if(all(all_timepoints_match)){
+    if(all_timepoints_match){
       
       duplicate_found <- TRUE
       
     }
+    
   }
-  
-  
+
+  #skipping dupes
   if(duplicate_found){
     
     cat(
@@ -226,51 +317,159 @@ for(input_file in input_files){
     
   }
   
+  
+  #adding each timepoint
   for(col in 2:ncol(data)){
     
     timepoint <- colnames(data)[col]
     
     values <- data[[col]]
     
-    
     cat(
-      "Adding:",
+      "\nAdding:",
       timepoint,
       "\n"
     )
     
     
-    # find matching columns
-    time_cols <- grep(
-      paste0("^", timepoint),
-      colnames(combined)
+    time_cols <- find_timepoint_columns(
+      colnames(combined),
+      timepoint
     )
     
     
-    target_col <- NA
-    
-    
-    # find empty replicate
-    for(c in time_cols){
+    target_col <- NA_integer_
+
+    #check for timepoint +date
+    if(length(time_cols) > 0){
       
-      if(all(
-        is.na(combined[check_rows,c]) |
-        combined[check_rows,c] == ""
-      )){
+      for(c in time_cols){
         
-        target_col <- c
+        existing_date <- as.character(
+          combined[
+            date_row,
+            c
+          ]
+        )
         
-        break
+        if(
+          !is.na(existing_date) &&
+          existing_date == experiment_date
+        ){
+          
+          target_col <- c
+          
+          cat(
+            "Found existing column for:",
+            timepoint,
+            "+",
+            experiment_date,
+            "-> column",
+            c,
+            "\n"
+          )
+          
+          break
+          
+        }
+        
+      }
+      
+    }
+    
+    #looking for empty column
+    if(is.na(target_col)){
+      
+      if(length(time_cols) > 0){
+        
+        for(c in time_cols){
+          
+          empty <- is_completely_empty(
+            combined[[c]],
+            check_rows
+          )
+          
+          existing_date <- as.character(
+            combined[
+              date_row,
+              c
+            ]
+          )
+          
+          no_date <- (
+            is.na(existing_date) ||
+              existing_date == ""
+          )
+          
+          if(
+            empty &&
+            no_date
+          ){
+            
+            target_col <- c
+            
+            cat(
+              "Using existing empty column:",
+              c,
+              "for",
+              timepoint,
+              "\n"
+            )
+            
+            break
+            
+          }
+          
+        }
         
       }
       
     }
     
     
-    # create new column
+    #creating new column if needed
     if(is.na(target_col)){
       
-      insert_position <- max(time_cols)
+      tp_index <- match(
+        timepoint,
+        timepoints
+      )
+      
+      insert_position <- ncol(combined)
+      
+      
+      # Find the first later timepoint already present and insert before it.
+      if(
+        !is.na(tp_index) &&
+        tp_index < length(timepoints)
+      ){
+        
+        later_timepoints <- timepoints[
+          (tp_index + 1):
+            length(timepoints)
+        ]
+        
+        for(next_tp in later_timepoints){
+          
+          next_cols <- find_timepoint_columns(
+            colnames(combined),
+            next_tp
+          )
+          
+          if(length(next_cols) > 0){
+            
+            insert_position <- min(
+              next_cols
+            ) - 1
+            
+            break
+            
+          }
+          
+        }
+        
+      }
+      
       
       new_column <- rep(
         NA_character_,
@@ -278,21 +477,28 @@ for(input_file in input_files){
       )
       
       new_df <- data.frame(
-        new_column
+        new_column,
+        stringsAsFactors = FALSE
       )
       
       colnames(new_df) <- timepoint
       
-      
-      left <- combined[,1:insert_position,drop=FALSE]
-      
-      
-      if(insert_position < ncol(combined)){
+      #insert column
+      if(
+        insert_position < ncol(combined)
+      ){
+        
+        left <- combined[
+          ,
+          seq_len(insert_position),
+          drop = FALSE
+        ]
         
         right <- combined[
           ,
-          (insert_position+1):ncol(combined),
-          drop=FALSE
+          (insert_position + 1):
+            ncol(combined),
+          drop = FALSE
         ]
         
         combined <- cbind(
@@ -310,22 +516,37 @@ for(input_file in input_files){
         
       }
       
-      target_col <- insert_position + 1
+      # Actual physical column created
+      target_col <-
+        insert_position + 1
+      
       
       cat(
-        "Created new column:",
+        "Created NEW column:",
+        target_col,
+        "with timepoint:",
         timepoint,
         "\n"
       )
       
     }
     
+    #experiment date
+    combined[
+      date_row,
+      target_col
+    ] <- experiment_date
+    
+    
+    cat(
+      "Assigned date",
+      experiment_date,
+      "to column",
+      target_col,
+      "\n"
+    )
 
-    # ADD DATE UNDER TIMEPOINT
-    combined[date_row, target_col] <- experiment_date
-    
-    
-    # inserting values
+    #add values
     for(i in seq_len(nrow(data))){
       
       row <- match(
@@ -335,82 +556,77 @@ for(input_file in input_files){
       
       if(!is.na(row)){
         
-        combined[row,target_col] <- values[i]
+        combined[
+          row,
+          target_col
+        ] <- values[i]
         
       }
       
     }
-    
-    
-  }
-  
   
 }
 
-# ORDER COLUMNS BY TIMEPOINT THEN DATE
 
-timepoints <- c(
-  "basal",
-  "2.5 min",
-  "5 min",
-  "7.5 min",
-  "10 min",
-  "12.5 min",
-  "15 min",
-  "17.5 min",
-  "20 min",
-  "22.5 min",
-  "25 min"
-)
-
-ordered_columns <- c()
+ordered_indices <- integer(0)
 
 for(tp in timepoints){
   
-  # find columns belonging to this timepoint
-  cols <- grep(
-    paste0("^", tp),
-    colnames(combined)
+  # Find actual physical columns belonging to this
+  # exact timepoint
+  cols <- find_timepoint_columns(
+    colnames(combined),
+    tp
   )
-  
-  # remove Concentration if matched
-  cols <- cols[
-    colnames(combined)[cols] != "Concentration"
-  ]
   
   if(length(cols) > 0){
     
-    # extract dates
+    # Get dates from those exact physical columns
     dates <- as.Date(
-      unlist(combined[1, cols]),
+      as.character(
+        combined[
+          date_row,
+          cols
+        ]
+      ),
       format = "%Y-%m-%d"
     )
     
-    # sort by date
+    # Sort the ACTUAL COLUMN INDICES by date
     cols <- cols[
-      order(dates, na.last = TRUE)
+      order(
+        dates,
+        na.last = TRUE
+      )
     ]
     
-    ordered_columns <- c(
-      ordered_columns,
-      colnames(combined)[cols]
+    # Store the physical column positions,
+    # NOT their names.
+    ordered_indices <- c(
+      ordered_indices,
+      cols
     )
+    
   }
+  
 }
 
 
-# keep Concentration first
-
+# KEEP CONCENTRATION FIRST
 combined <- combined[
   ,
-  c("Concentration", ordered_columns),
+  c(
+    1,
+    ordered_indices
+  ),
   drop = FALSE
 ]
+
 
 write_csv(
   combined,
   output_file,
-  na=""
+  na = ""
 )
 
-cat("Finished merging all files!")
+cat("\nFinished merging all files!\n")
