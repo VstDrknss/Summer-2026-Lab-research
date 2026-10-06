@@ -9,5 +9,6 @@ Steps to clean up data for analysis
 
 
 Steps for "one click clean Biosensor"
+
 	1. Have each baseline-corrected data of each drug exported from Graphpad to their corresponding drug folder
 	2. Run the code while selecting the biosensor as input folder
